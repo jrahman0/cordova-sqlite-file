@@ -33,6 +33,33 @@
 @synthesize openDBs;
 @synthesize appDBPaths;
 
+// Helper: build custom path (relative to Documents by default) and ensure directory exists.
+- (NSString *)ensureCustomLocationAndGetPath:(NSString *)customLocation dbFile:(NSString *)dbFileName {
+    if (customLocation == nil || customLocation.length == 0) return nil;
+
+    // Strip leading/trailing slashes.
+    NSString *trimmed = [customLocation stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/"]];
+
+    // Base (choose "docs" or another key such as @"libs"/@"nosync").
+    NSString *base = [appDBPaths objectForKey:@"docs"];
+    if (base == nil) return nil;
+
+    NSString *targetDir = [base stringByAppendingPathComponent:trimmed];
+
+    NSError *err = nil;
+    if (![[NSFileManager defaultManager] fileExistsAtPath:targetDir]) {
+        if (![[NSFileManager defaultManager] createDirectoryAtPath:targetDir
+                                      withIntermediateDirectories:YES
+                                                       attributes:nil
+                                                            error:&err]) {
+            DLog(@"ERROR creating custom location directory %@ (%@)", targetDir, err);
+            return nil;
+        }
+    }
+
+    return [targetDir stringByAppendingPathComponent:dbFileName];
+}
+
 -(void)pluginInitialize
 {
     DLog(@"Initializing SQLitePlugin");
@@ -138,72 +165,92 @@
     NSMutableDictionary *options = [command.arguments objectAtIndex:0];
 
     NSString *dbfilename = [options objectForKey:@"name"];
+    NSString *locationArg = [options objectForKey:@"location"]; // can be token or custom path
+    NSString *dblocation = nil;
 
-    NSString *dblocation = [options objectForKey:@"dblocation"];
-    if (dblocation == NULL) dblocation = @"docs";
-    // DLog(@"using db location: %@", dblocation);
+    if (dbfilename == NULL) {
+        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"You must specify database name"];
+        [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+        return;
+    }
 
-    NSString *dbname = [self getDBPath:dbfilename at:dblocation];
+    NSString *dbPath = nil;
+
+    // Determine if custom (absolute-style or contains slash and not a known token)
+    BOOL isCustom = NO;
+    if (locationArg != nil && locationArg.length > 0) {
+        if ([locationArg hasPrefix:@"/"]) {
+            isCustom = YES;
+        } else if ([locationArg rangeOfString:@"/"].location != NSNotFound &&
+                   !([locationArg isEqualToString:@"default"] ||
+                     [locationArg isEqualToString:@"Documents"] ||
+                     [locationArg isEqualToString:@"Library"])) {
+            isCustom = YES;
+        }
+    }
+
+    if (isCustom) {
+        dbPath = [self ensureCustomLocationAndGetPath:locationArg dbFile:dbfilename];
+    } else {
+        if (locationArg == NULL || [locationArg length] == 0 || [locationArg isEqualToString:@"default"]) {
+            dblocation = @"nosync";
+        } else if ([locationArg isEqualToString:@"Documents"]) {
+            dblocation = @"docs";
+        } else if ([locationArg isEqualToString:@"Library"]) {
+            dblocation = @"libs";
+        } else {
+            dblocation = @"nosync";
+        }
+        dbPath = [self getDBPath:dbfilename at:dblocation];
+    }
 
     if (!sqlite3_threadsafe()) {
-        // INTERNAL PLUGIN ERROR:
         NSLog(@"INTERNAL PLUGIN ERROR: sqlite3_threadsafe() returns false value");
         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString: @"INTERNAL PLUGIN ERROR: sqlite3_threadsafe() returns false value"];
-        [self.commandDelegate sendPluginResult:pluginResult callbackId: command.callbackId];
-        return;
-    } else if (dbname == NULL) {
-        // INTERNAL PLUGIN ERROR - NOT EXPECTED:
-        NSLog(@"INTERNAL PLUGIN ERROR (NOT EXPECTED): open with database name missing");
-        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString: @"INTERNAL PLUGIN ERROR: open with database name missing"];
-        [self.commandDelegate sendPluginResult:pluginResult callbackId: command.callbackId];
-        return;
+    } else if (dbPath == NULL) {
+        NSLog(@"INTERNAL PLUGIN ERROR: dbPath is null");
+        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString: @"INTERNAL PLUGIN ERROR: Could not create/access custom location"];
     } else {
         NSValue *dbPointer = [openDBs objectForKey:dbfilename];
 
         if (dbPointer != NULL) {
-            // NO LONGER EXPECTED due to BUG 666 workaround solution:
-            // DLog(@"Reusing existing database connection for db name %@", dbfilename);
-            NSLog(@"INTERNAL PLUGIN ERROR: database already open for db name: %@ (db file name: %@)", dbname, dbfilename);
+            NSLog(@"INTERNAL PLUGIN ERROR: database already open for db name: %@ (db file name: %@)", dbPath, dbfilename);
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString: @"INTERNAL PLUGIN ERROR: database already open"];
-            [self.commandDelegate sendPluginResult:pluginResult callbackId: command.callbackId];
-            return;
-        }
+        } else {
+            @synchronized(self) {
+                const char *name = [dbPath UTF8String];
+                sqlite3 *db;
 
-        @synchronized(self) {
-            const char *name = [dbname UTF8String];
-            sqlite3 *db;
+                DLog(@"open full db path: %@", dbPath);
 
-            DLog(@"open full db path: %@", dbname);
+                // Using sqlite3_open_v2 for more control, which is generally preferred.
+                int rc = sqlite3_open_v2(name, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 
-            if (sqlite3_open(name, &db) != SQLITE_OK) {
-                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Unable to open DB"];
-                [self.commandDelegate sendPluginResult:pluginResult callbackId: command.callbackId];
-                return;
-            } else {
-                sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, NULL);
-
-                // for SQLCipher version:
-                // NSString *dbkey = [options objectForKey:@"key"];
-                // const char *key = NULL;
-                // if (dbkey != NULL) key = [dbkey UTF8String];
-                // if (key != NULL) sqlite3_key(db, key, strlen(key));
-
-                // Attempt to read the SQLite master table [to support SQLCipher version]:
-                if(sqlite3_exec(db, (const char*)"SELECT count(*) FROM sqlite_master;", NULL, NULL, NULL) == SQLITE_OK) {
-                    dbPointer = [NSValue valueWithPointer:db];
-                    [openDBs setObject: dbPointer forKey: dbfilename];
-                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"Database opened"];
+                if (rc != SQLITE_OK) {
+                    NSLog(@"Unable to open DB: %s", sqlite3_errmsg(db));
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Unable to open DB"];
+                    sqlite3_close(db); // Close the handle on error
                 } else {
-                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Unable to open DB with key"];
-                    // XXX TODO: close the db handle & [perhaps] remove from openDBs!!
+                    sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, NULL);
+
+                    // Attempt to read the SQLite master table to verify the database is usable
+                    if(sqlite3_exec(db, (const char*)"SELECT count(*) FROM sqlite_master;", NULL, NULL, NULL) == SQLITE_OK) {
+                        dbPointer = [NSValue valueWithPointer:db];
+                        [openDBs setObject: dbPointer forKey: dbfilename];
+                        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:@"Database opened"];
+                    } else {
+                        NSLog(@"Unable to open DB with key: %s", sqlite3_errmsg(db));
+                        pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Unable to open DB with key"];
+                        sqlite3_close(db);
+                    }
                 }
             }
         }
     }
 
-    [self.commandDelegate sendPluginResult:pluginResult callbackId: command.callbackId];
-
-    // DLog(@"open cb finished ok");
+    if (pluginResult) {
+        [self.commandDelegate sendPluginResult:pluginResult callbackId: command.callbackId];
+    }
 }
 
 -(void) close: (CDVInvokedUrlCommand*)command
@@ -418,16 +465,23 @@
                             columnValue = [NSNumber numberWithDouble: sqlite3_column_double(statement, i)];
                             break;
                         case SQLITE_BLOB:
+                        {
+                            const void *blob_bytes = sqlite3_column_blob(statement, i);
+                            int blob_len = sqlite3_column_bytes(statement, i);
+                            NSData *data = [NSData dataWithBytes:blob_bytes length:blob_len];
+                            columnValue = [data base64EncodedStringWithOptions:0];
+                        }
+                        break;
                         case SQLITE_TEXT:
-                            columnValue = [[NSString alloc] initWithBytes:(char *)sqlite3_column_text(statement, i)
-                                                                   length:sqlite3_column_bytes(statement, i)
-                                                                 encoding:NSUTF8StringEncoding];
-                            break;
-                        case SQLITE_NULL:
-                        // just in case (should not happen):
-                        default:
-                            columnValue = [NSNull null];
-                            break;
+                            columnValue = [[NSString alloc] initWithBytes:(const void *)sqlite3_column_text(statement, i)
+                            length:sqlite3_column_bytes(statement, i)
+                            encoding:NSUTF8StringEncoding];
+                                break;
+                            case SQLITE_NULL:
+                            // just in case (should not happen):
+                            default:
+                                columnValue = [NSNull null];
+                                break;
                     }
 
                     if (columnValue) {

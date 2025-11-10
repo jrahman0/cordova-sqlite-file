@@ -16,6 +16,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteStatement;
 
+import android.util.Base64;
 import android.util.Log;
 
 import java.io.File;
@@ -535,8 +536,11 @@ class SQLiteAndroidDatabase
             case Cursor.FIELD_TYPE_FLOAT:
                 row.put(key, cur.getDouble(i));
                 break;
+            case Cursor.FIELD_TYPE_BLOB:
+                row.put(key, Base64.encodeToString(cur.getBlob(i), Base64.NO_WRAP));
+                break;
             case Cursor.FIELD_TYPE_STRING:
-            default: /* (BLOB) */
+            default:
                 row.put(key, cur.getString(i));
                 break;
         }

@@ -1,0 +1,21 @@
+{
+  "name": "cordova-sqlite-file",
+  "version": "1.0.0",
+  "main": "main-sqlite-handler.js",
+  "cordova": {
+    "serviceName": "SQLite"
+  },
+  "description": "Electron Native Supprot for Cordova sqlite Plugin",
+  "keywords": [
+    "cordova",
+    "electron",
+    "sqlite",
+    "native"
+  ],
+  "author": "Apache Software Foundation",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "electron-rebuild": "^3.2.9",
+    "sqlite3": "^5.1.7"
+  }
+}

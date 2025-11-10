@@ -1,15 +1,13 @@
 {
-  "name": "cordova-sqlite-storage",
+  "name": "cordova-sqlite-file",
   "version": "7.0.1-dev",
-  "description": "Native interface to SQLite for PhoneGap / Cordova - cordova-sqlite-storage plugin version",
+  "description": "Native interface to SQLite for PhoneGap / Cordova - cordova-sqlite-file plugin version",
   "cordova": {
-    "id": "cordova-sqlite-storage",
+    "id": "cordova-sqlite-file",
     "platforms": [
       "android",
-      "browser",
-      "ios",
-      "osx",
-      "windows"
+      "electron",
+      "ios"
     ]
   },
   "repository": {
@@ -20,10 +18,7 @@
     "sqlite",
     "ecosystem:cordova",
     "cordova-android",
-    "cordova-browser",
-    "cordova-ios",
-    "cordova-osx",
-    "cordova-windows"
+    "cordova-electron"
   ],
   "author": "various",
   "license": "MIT",
@@ -31,13 +26,32 @@
     "url": "https://github.com/xpbrew/cordova-sqlite-storage/issues"
   },
   "homepage": "https://github.com/xpbrew/cordova-sqlite-storage",
+  "engines": {
+    "cordovaDependencies": {
+      "5.0.0": {
+        "cordova-android": ">=6.3.0"
+      },
+      "7.0.0": {
+        "cordova-android": ">=10.0.0"
+      },
+      "8.0.0": {
+        "cordova-electron": ">=3.0.0",
+        "cordova-android": ">=12.0.0"
+      },
+      "9.0.0": {
+        "cordova-electron": ">=4.0.0",
+        "cordova": ">100"
+      }
+    }
+  },
   "dependencies": {
     "cordova-sqlite-storage-dependencies": "5.0.0"
   },
   "scripts": {
     "clean-spec": "rimraf spec/[mnp]* && git checkout -- spec/config.xml spec/package.json && git status --ignored",
     "prepare-js": "coffee -p SQLitePlugin.coffee.md > www/SQLitePlugin.js",
-    "prepare-spec": "node scripts/prepareSpec.js"
+    "prepare-spec": "node scripts/prepareSpec.js",
+    "rebuild-electron": "electron-rebuild -f -w sqlite3 --runtime=electron --target=16.2.8"
   },
   "devDependencies": {
     "coffeescript": "1",

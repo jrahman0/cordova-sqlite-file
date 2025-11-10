@@ -95,8 +95,9 @@ public class SQLitePlugin extends CordovaPlugin {
             case open:
                 o = args.getJSONObject(0);
                 dbname = o.getString("name");
+                String dbPath = o.getString("dblocation");
                 // open database and start reading its queue
-                this.startDatabase(dbname, o, cbc);
+                this.startDatabase(dbname, dbPath, o, cbc);
                 break;
 
             case close:
@@ -179,14 +180,14 @@ public class SQLitePlugin extends CordovaPlugin {
     // LOCAL METHODS
     // --------------------------------------------------------------------------
 
-    private void startDatabase(String dbname, JSONObject options, CallbackContext cbc) {
+    private void startDatabase(String dbname, String path, JSONObject options, CallbackContext cbc) {
         DBRunner r = dbrmap.get(dbname);
 
         if (r != null) {
             // NO LONGER EXPECTED due to BUG 666 workaround solution:
             cbc.error("INTERNAL ERROR: database already open for db name: " + dbname);
         } else {
-            r = new DBRunner(dbname, options, cbc);
+            r = new DBRunner(dbname, path, options, cbc);
             dbrmap.put(dbname, r);
             this.cordova.getThreadPool().execute(r);
         }
@@ -196,12 +197,13 @@ public class SQLitePlugin extends CordovaPlugin {
      *
      * @param dbName   The name of the database file
      */
-    private SQLiteAndroidDatabase openDatabase(String dbname, CallbackContext cbc, boolean old_impl) throws Exception {
+    private SQLiteAndroidDatabase openDatabase(String dbname, String path, CallbackContext cbc, boolean old_impl) throws Exception {
         try {
             // ASSUMPTION: no db (connection/handle) is already stored in the map
             // [should be true according to the code in DBRunner.run()]
 
-            File dbfile = this.cordova.getActivity().getDatabasePath(dbname);
+            File internalStorageDir = this.cordova.getActivity().getExternalFilesDir(path);
+            File dbfile = new File(internalStorageDir, dbname);
 
             if (!dbfile.exists()) {
                 dbfile.getParentFile().mkdirs();
@@ -303,6 +305,7 @@ public class SQLitePlugin extends CordovaPlugin {
 
     private class DBRunner implements Runnable {
         final String dbname;
+        final String path;
         private boolean oldImpl;
         private boolean bugWorkaround;
 
@@ -311,8 +314,9 @@ public class SQLitePlugin extends CordovaPlugin {
 
         SQLiteAndroidDatabase mydb;
 
-        DBRunner(final String dbname, JSONObject options, CallbackContext cbc) {
+        DBRunner(final String dbname, String path, JSONObject options, CallbackContext cbc) {
             this.dbname = dbname;
+            this.path = path;
             this.oldImpl = options.has("androidOldDatabaseImplementation");
             Log.v(SQLitePlugin.class.getSimpleName(), "Android db implementation: built-in android.database.sqlite package");
             this.bugWorkaround = this.oldImpl && options.has("androidBugWorkaround");
@@ -325,7 +329,7 @@ public class SQLitePlugin extends CordovaPlugin {
 
         public void run() {
             try {
-                this.mydb = openDatabase(dbname, this.openCbc, this.oldImpl);
+                this.mydb = openDatabase(dbname, path, this.openCbc, this.oldImpl);
             } catch (Exception e) {
                 Log.e(SQLitePlugin.class.getSimpleName(), "unexpected error, stopping db thread", e);
                 dbrmap.remove(dbname);
