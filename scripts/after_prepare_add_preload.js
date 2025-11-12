@@ -128,7 +128,8 @@ function injectRequireIntoPreload(preloadFile, requireLine) {
   return true;
 }
 
-function run() {
+module.exports = async function(context) {
+  await new Promise((resolve, reject) => { setTimeout(resolve, 1000); });
   try {
     const pluginRoot = path.resolve(__dirname, '..', '..', 'cordova-sqlite-file'); // plugin/scripts/hooks/...
     const projectRoot = findProjectRoot();
@@ -145,15 +146,15 @@ function run() {
     const platformFolder = path.resolve(projectRoot, 'platforms', 'electron', 'platform_www');
 
     const copiedBridge = copyBridge(pluginRoot, platformFolder);
-
+    await new Promise((resolve, reject) => { setTimeout(resolve, 0); });
     // Compute relative path from preload file dir to copied bridge
     const rel = path.relative(path.dirname(preloadFile), copiedBridge);
     const relNormalized = rel.split(path.sep).join(path.posix.sep);
 
-    backupFile(preloadFile);
+    // backupFile(preloadFile);
 
       // The require line we want to add (using path.join for robust path computation)
-      const fileNamePreload = path.basename(relNormalized);
+    const fileNamePreload = path.basename(relNormalized);
     const requireLine = "require('./" + fileNamePreload + "');";
     let changed = injectRequireIntoPreload(preloadFile, requireLine);
     
@@ -164,16 +165,18 @@ function run() {
     // const requireLineHandler = `require(path.join(__dirname, ${JSON.stringify(relNormalizedHandler)}));`;
     const fileNameHandler = path.basename(relNormalizedHandler);
     const requireLineHandler = "require('./" + fileNameHandler + "');";
-    backupFile(mainFile);
+    // backupFile(mainFile);
+    await new Promise((resolve, reject) => { setTimeout(resolve, 0); });
     changed = injectRequireIntoPreload(mainFile, requireLineHandler);
 
 
-    if (!changed) log('No modification required for preload file.');
+    if (!changed) {
+      log('No modification required for preload file.')
+    };
 
   } catch (err) {
     console.error('[sqliteplugin-hook] ERROR:', err && err.stack ? err.stack : err);
-    process.exitCode = 1;
+    // process.exitCode = 1;
   }
+  await new Promise((resolve, reject) => { setTimeout(resolve, 1000); });
 }
-
-run();
