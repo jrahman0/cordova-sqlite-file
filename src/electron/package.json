@@ -1,7 +1,7 @@
 {
   "name": "cordova-sqlite-file",
   "version": "1.0.0",
-  "main": "main-sqlite-handler.js",
+  "main": "sqlite3.js",
   "cordova": {
     "serviceName": "SQLite"
   },

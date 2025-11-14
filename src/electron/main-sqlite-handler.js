@@ -4,7 +4,8 @@ const path = require('path');
 
 let sqlite3;
 try {
-  const sqlitePath = path.join(__dirname, "node_modules", "cordova-sqlite-file", 'sqlite3');
+  const sqlitePath = path.join(__dirname, "lib", 'sqlite3');
+  console.error('[sqliteplugin-main] Requiring :' + sqlitePath);
   sqlite3 = require(sqlitePath);
 } catch (e) {
   console.error('[sqliteplugin-main] sqlite3 require failed:', e && e.stack ? e.stack : e);

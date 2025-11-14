@@ -1,8 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 
+const debug = process.env.SQLITEPLUGIN_HOOK_DEBUG === '1';
+
 function log(...args) { 
-  console.log('[sqliteplugin-hook]', ...args); 
+  if (debug) {
+    console.log('[sqliteplugin-hook]', ...args); 
+  }
 }
 
 const CANDIDATE_PRELOADS = [
@@ -79,6 +83,25 @@ function copyHandler(pluginRoot, destDir) {
   return dst;
 }
 
+function copyDependencies(pluginRoot, destDir, files) {
+  const sourceDir = path.join(pluginRoot, 'src', 'electron');
+  ensureDir(destDir);
+  const copiedFilePaths = [];
+
+  files.forEach(file => {
+    const srcPath = path.join(sourceDir, file);
+    if (!fs.existsSync(srcPath)) {
+      throw new Error(`Plugin file not found at ${srcPath}`);
+    }
+    const destPath = path.join(destDir, file);
+    fs.copyFileSync(srcPath, destPath);
+    log(`Copied ${file} to ${destPath}`);
+    copiedFilePaths.push(destPath);
+  });
+
+  return copiedFilePaths;
+}
+
 function backupFile(file) {
   const bak = file + '.sqliteplugin.bak';
   if (!fs.existsSync(bak)) {
@@ -133,7 +156,9 @@ module.exports = async function(context) {
   try {
     const pluginRoot = path.resolve(__dirname, '..', '..', 'cordova-sqlite-file'); // plugin/scripts/hooks/...
     const projectRoot = findProjectRoot();
+    // findProjectRoot();
     log('Project root:', projectRoot);
+    // log(context);
 
     const preloadFile = findPreloadFile(projectRoot);
     if (!preloadFile) {
@@ -162,6 +187,7 @@ module.exports = async function(context) {
     const copiedHandler = copyHandler(pluginRoot, platformFolder);
     const relHandler = path.relative(path.dirname(mainFile), copiedHandler);
     const relNormalizedHandler = relHandler.split(path.sep).join(path.posix.sep);
+
     // const requireLineHandler = `require(path.join(__dirname, ${JSON.stringify(relNormalizedHandler)}));`;
     const fileNameHandler = path.basename(relNormalizedHandler);
     const requireLineHandler = "require('./" + fileNameHandler + "');";
@@ -169,6 +195,12 @@ module.exports = async function(context) {
     await new Promise((resolve, reject) => { setTimeout(resolve, 0); });
     changed = injectRequireIntoPreload(mainFile, requireLineHandler);
 
+    copyDependencies(pluginRoot, path.resolve(platformFolder, 'lib', "sqlite3"), [
+      'sqlite3.js',
+      'sqlite3-binding.js',
+      'node_sqlite3.node',
+      'package.json',
+    ]);
 
     if (!changed) {
       log('No modification required for preload file.')

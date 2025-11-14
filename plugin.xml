@@ -14,7 +14,7 @@
     <author>Litehelpers/Various</author>
 
     <!-- THANKS to AllJoyn-Cordova / cordova-plugin-alljoyn: -->
-    <hook type="before_plugin_install" src="scripts/beforePluginInstall.js" />
+    
 
     <js-module src="www/SQLitePlugin.js" name="SQLitePlugin">
         <clobbers target="SQLitePlugin" />
@@ -29,7 +29,7 @@
     <source-file src="src/electron/sqlite3.js" target-dir="src/electron" />
     <source-file src="src/electron/sqlite3-binding.js" target-dir="src/electron" />
 
-
+    <hook type="before_prepare" src="scripts/beforePluginInstall.js" />
     <hook type="after_prepare" src="scripts/after_prepare_add_preload.js" />
     <!-- <hook src="scripts/beforePluginInstallElectron.js" type="after_prepare" /> -->
   </platform>
@@ -41,7 +41,7 @@
                 <param name="android-package" value="io.sqlc.SQLitePlugin"/>
             </feature>
         </config-file>
-
+        <hook type="before_plugin_install" src="scripts/beforePluginInstall.js" />
         <source-file src="src/android/io/sqlc/SQLitePlugin.java" target-dir="src/io/sqlc"/>
         <source-file src="src/android/io/sqlc/SQLiteAndroidDatabase.java" target-dir="src/io/sqlc"/>
         <source-file src="src/android/io/sqlc/SQLiteConnectorDatabase.java" target-dir="src/io/sqlc"/>
@@ -57,6 +57,8 @@
                 <param name="ios-package" value="SQLitePlugin" />
             </feature>
         </config-file>
+
+        <hook type="before_plugin_install" src="scripts/beforePluginInstall.js" />
 
         <!-- Note: the iOS src is based off src/ios implicitly -->
         <header-file src="src/ios/SQLitePlugin.h" />
