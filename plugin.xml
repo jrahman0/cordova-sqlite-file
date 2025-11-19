@@ -29,7 +29,8 @@
     <source-file src="src/electron/sqlite3.js" target-dir="src/electron" />
     <source-file src="src/electron/sqlite3-binding.js" target-dir="src/electron" />
 
-    <hook type="before_prepare" src="scripts/beforePluginInstall.js" />
+    <!-- not relevant to electron -->
+    <!-- <hook type="before_prepare" src="scripts/beforePluginInstall.js" /> -->
     <hook type="after_prepare" src="scripts/after_prepare_add_preload.js" />
     <!-- <hook src="scripts/beforePluginInstallElectron.js" type="after_prepare" /> -->
   </platform>
