@@ -50,8 +50,7 @@
   "scripts": {
     "clean-spec": "rimraf spec/[mnp]* && git checkout -- spec/config.xml spec/package.json && git status --ignored",
     "prepare-js": "coffee -p SQLitePlugin.coffee.md > www/SQLitePlugin.js",
-    "prepare-spec": "node scripts/prepareSpec.js",
-    "rebuild-electron": "electron-rebuild -f -w sqlite3 --runtime=electron --target=16.2.8"
+    "prepare-spec": "node scripts/prepareSpec.js"
   },
   "devDependencies": {
     "coffeescript": "1",
