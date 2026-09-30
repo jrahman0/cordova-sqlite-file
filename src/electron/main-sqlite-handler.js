@@ -120,7 +120,7 @@ ipcMain.handle('electron-sqlite-all', async (event, { key, executes }) => {
 ipcMain.handle('electron-sqlite-close', async (event, { key }) => {
   return new Promise((resolve, reject) => {
     const entry = dbMap.get(key);
-    if (!entry) resolve({ ok: true });
+    if (!entry) return resolve({ ok: true });
     entry.db.close((err) => {
       if (err) return reject({ message: err.message });
       dbMap.delete(key);

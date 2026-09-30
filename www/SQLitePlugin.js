@@ -240,7 +240,7 @@
         console.log('closing db with no transaction lock state');
       }
       if (isElectron) {
-        window.SQLitePluginElectron.close({ key: this.dbname });
+        window.SQLitePluginElectron.close({ key: this.dbname, okcb: success, errorcb: error });
       } else {
         cordova.exec(success, error, "SQLitePlugin", "close", [
           {

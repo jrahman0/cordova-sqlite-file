@@ -155,7 +155,7 @@ module.exports = async function(context) {
   await new Promise((resolve, reject) => { setTimeout(resolve, 1000); });
   try {
     const pluginRoot = path.resolve(__dirname, '..', '..', 'cordova-sqlite-file'); // plugin/scripts/hooks/...
-    const projectRoot = findProjectRoot();
+    const projectRoot = (context && context.opts && context.opts.projectRoot) || findProjectRoot();
     // findProjectRoot();
     log('Project root:', projectRoot);
     // log(context);
@@ -182,7 +182,11 @@ module.exports = async function(context) {
     const fileNamePreload = path.basename(relNormalized);
     const requireLine = "require('./" + fileNamePreload + "');";
     let changed = injectRequireIntoPreload(preloadFile, requireLine);
-    
+    const platformPreload = path.join(platformFolder, path.basename(preloadFile));
+    if (platformPreload !== preloadFile && fs.existsSync(platformPreload)) {
+      injectRequireIntoPreload(platformPreload, requireLine);
+    }
+
     const mainFile = findMainFile(projectRoot);
     const copiedHandler = copyHandler(pluginRoot, platformFolder);
     const relHandler = path.relative(path.dirname(mainFile), copiedHandler);
@@ -194,6 +198,10 @@ module.exports = async function(context) {
     // backupFile(mainFile);
     await new Promise((resolve, reject) => { setTimeout(resolve, 0); });
     changed = injectRequireIntoPreload(mainFile, requireLineHandler);
+    const platformMain = path.join(platformFolder, path.basename(mainFile));
+    if (platformMain !== mainFile && fs.existsSync(platformMain)) {
+      injectRequireIntoPreload(platformMain, requireLineHandler);
+    }
 
     copyDependencies(pluginRoot, path.resolve(platformFolder, 'lib', "sqlite3"), [
       'sqlite3.js',
