@@ -1,6 +1,6 @@
 {
   "name": "cordova-sqlite-file",
-  "version": "7.0.1-dev",
+  "version": "7.1.0-dev",
   "description": "Native interface to SQLite for PhoneGap / Cordova - cordova-sqlite-file plugin version",
   "cordova": {
     "id": "cordova-sqlite-file",

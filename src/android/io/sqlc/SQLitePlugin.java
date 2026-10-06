@@ -197,13 +197,16 @@ public class SQLitePlugin extends CordovaPlugin {
      *
      * @param dbName   The name of the database file
      */
-    private SQLiteAndroidDatabase openDatabase(String dbname, String path, CallbackContext cbc, boolean old_impl) throws Exception {
+    private SQLiteAndroidDatabase openDatabase(String dbname, String path, CallbackContext cbc, boolean old_impl, boolean private_location) throws Exception {
         try {
             // ASSUMPTION: no db (connection/handle) is already stored in the map
             // [should be true according to the code in DBRunner.run()]
 
-            File internalStorageDir = this.cordova.getActivity().getExternalFilesDir(path);
-            File dbfile = new File(internalStorageDir, dbname);
+            // app-private internal storage, or app-specific external storage by default
+            File dbdir = private_location
+                    ? new File(this.cordova.getActivity().getFilesDir(), path)
+                    : this.cordova.getActivity().getExternalFilesDir(path);
+            File dbfile = new File(dbdir, dbname);
 
             if (!dbfile.exists()) {
                 dbfile.getParentFile().mkdirs();
@@ -308,6 +311,7 @@ public class SQLitePlugin extends CordovaPlugin {
         final String path;
         private boolean oldImpl;
         private boolean bugWorkaround;
+        private boolean privateLocation;
 
         final BlockingQueue<DBQuery> q;
         final CallbackContext openCbc;
@@ -322,6 +326,7 @@ public class SQLitePlugin extends CordovaPlugin {
             this.bugWorkaround = this.oldImpl && options.has("androidBugWorkaround");
             if (this.bugWorkaround)
                 Log.v(SQLitePlugin.class.getSimpleName(), "Android db closing/locking workaround applied");
+            this.privateLocation = "private".equals(options.optString("androidDatabaseLocation"));
 
             this.q = new LinkedBlockingQueue<DBQuery>();
             this.openCbc = cbc;
@@ -329,7 +334,7 @@ public class SQLitePlugin extends CordovaPlugin {
 
         public void run() {
             try {
-                this.mydb = openDatabase(dbname, path, this.openCbc, this.oldImpl);
+                this.mydb = openDatabase(dbname, path, this.openCbc, this.oldImpl, this.privateLocation);
             } catch (Exception e) {
                 Log.e(SQLitePlugin.class.getSimpleName(), "unexpected error, stopping db thread", e);
                 dbrmap.remove(dbname);

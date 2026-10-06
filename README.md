@@ -968,6 +968,30 @@ Use the `location` or `iosDatabaseLocation` option in `sqlitePlugin.openDatabase
 
 <!-- END iCloud backup notes -->
 
+### Android database location
+
+By default on Android, the database file is created in the `location` subdirectory of the app-specific *external* storage directory ([`Context.getExternalFilesDir()`](https://developer.android.com/reference/android/content/Context#getExternalFilesDir(java.lang.String))), for example `/storage/emulated/0/Android/data/<package>/files/default/my.db`. Files in this directory are accessible when the device is connected to a computer by USB and, on Android 9 and older, to other apps that have storage permission.
+
+To store the database in the app's private *internal* storage directory ([`Context.getFilesDir()`](https://developer.android.com/reference/android/content/Context#getFilesDir())) instead, which only the app itself can access, use the `androidDatabaseLocation: 'private'` setting:
+
+```js
+var db = window.sqlitePlugin.openDatabase({
+  name: 'my.db',
+  location: 'default',
+  androidDatabaseLocation: 'private'
+});
+```
+
+This example opens `files/default/my.db` in the app's internal data directory, for example `/data/data/<package>/files/default/my.db`.
+
+The `androidDatabaseLocation` option may be set to one of the following choices (ignored on other platforms):
+- `external` (default): app-specific external storage - `cordova.file.externalDataDirectory` in [`cordova-plugin-file`](https://github.com/apache/cordova-plugin-file)
+- `private`: app-private internal storage - `cordova.file.dataDirectory` in [`cordova-plugin-file`](https://github.com/apache/cordova-plugin-file)
+
+**WARNING:** Changing this setting does *not* move an existing database. To keep the data of an app that already stored its database in the default external location, copy the database file to the private location (for example using [`cordova-plugin-file`](https://github.com/apache/cordova-plugin-file)) *before* opening it with `androidDatabaseLocation: 'private'`, otherwise a new empty database is created.
+
+<!-- END Android database location -->
+
 ### Android database provider
 
 By default, this plugin uses [`android-sqlite-native-ndk-connector`](https://github.com/brodybits/android-sqlite-native-ndk-connector), which is lightweight and should be more efficient than the Android system database provider. To use the built-in Android system database provider implementation instead:

@@ -955,6 +955,68 @@ var mytests = function() {
           }
         }, MYTIMEOUT);
 
+        it(suiteName + 'open with androidDatabaseLocation: "bogus" - REJECTED with exception', function(done) {
+          try {
+            window.sqlitePlugin.openDatabase({
+              name: 'open-with-androidDatabaseLocation-bogus.db',
+              androidDatabaseLocation: 'bogus',
+              location: 'default'
+            }, function(db) {
+              // NOT EXPECTED:
+              expect(false).toBe(true);
+
+              // Close (plugin) & finish:
+              db.close(done, done);
+            }, function(error) {
+              // OK but NOT EXPECTED:
+              expect('Behavior changed, please update this test').toBe('--');
+
+              done();
+            });
+          } catch (e) {
+            // EXPECTED RESULT: stopped by the implementation
+            expect(e).toBeDefined();
+
+            done();
+          }
+        }, MYTIMEOUT);
+
+        it(suiteName + 'open with androidDatabaseLocation: "private" & check internal database file path', function(done) {
+          if (!isAndroid) pending('SKIP: androidDatabaseLocation setting applies to Android only');
+
+          var dbName = 'open-with-androidDatabaseLocation-private.db';
+
+          window.sqlitePlugin.openDatabase({
+            name: dbName,
+            androidDatabaseLocation: 'private',
+            location: 'default'
+          }, function(db) {
+            db.executeSql('PRAGMA database_list', [], function(rs) {
+              // EXPECTED RESULT:
+              expect(rs.rows.length).toBe(1);
+              // in app-private internal storage, NOT app-specific external storage:
+              expect(rs.rows.item(0).file.indexOf('/files/default/' + dbName) !== -1).toBe(true);
+              expect(rs.rows.item(0).file.indexOf('/Android/data/')).toBe(-1);
+
+              // Close (plugin) & finish:
+              db.close(done, done);
+            }, function(error) {
+              // NOT EXPECTED:
+              expect(false).toBe(true);
+              expect(error.message).toBe('--');
+
+              // Close (plugin) & finish:
+              db.close(done, done);
+            });
+          }, function(error) {
+            // NOT EXPECTED:
+            expect(false).toBe(true);
+            expect(error.message).toBe('--');
+
+            done();
+          });
+        }, MYTIMEOUT);
+
       }
 
     });

@@ -621,6 +621,9 @@
       if (!!openargs.androidLockWorkaround && openargs.androidLockWorkaround === 1) {
         openargs.androidBugWorkaround = 1;
       }
+      if (openargs.androidDatabaseLocation !== void 0 && openargs.androidDatabaseLocation !== 'external' && openargs.androidDatabaseLocation !== 'private') {
+        throw newSQLError("Incorrect androidDatabaseLocation value. Valid values are: 'external', 'private'");
+      }
       okcb = null;
       errorcb = null;
       if (args.length >= 2) {
