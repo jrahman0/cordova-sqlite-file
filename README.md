@@ -1240,6 +1240,38 @@ db.readTransaction(function(tx) {
 
 <!-- END Standard asynchronous transactions -->
 
+### Awaitable transactions
+
+`db.transactionAsync(fn)` works like `db.transaction` but lets `fn` be an `async` function that awaits `tx.executeSqlAsync(sql, params)`, which returns a promise of the result set. The transaction stays open (between BEGIN and COMMIT) until the promise returned by `fn` settles: it is committed if the promise resolves, or rolled back if it rejects. `db.transactionAsync` returns a promise that resolves with the value returned by `fn` once committed, or rejects with the error that failed the transaction once rolled back:
+
+```Javascript
+try {
+  var name = await db.transactionAsync(async function(tx) {
+    var resultSet = await tx.executeSqlAsync('SELECT name FROM Person WHERE id = ?', [personId]);
+    var name = resultSet.rows.item(0).name;
+    await tx.executeSqlAsync('INSERT INTO AuditLog (message) VALUES (?)', ['read ' + name]);
+    return name;
+  });
+  console.log('transaction ok: ' + name);
+} catch (error) {
+  console.log('transaction rolled back: ' + error.message);
+}
+```
+
+A failed statement rejects its `executeSqlAsync` promise without failing the transaction by itself: catch the error to carry on, or let it propagate out of `fn` to roll the transaction back.
+
+`db.readTransactionAsync(fn)` is the awaitable version of `readTransaction`: it does not use BEGIN, COMMIT, or ROLLBACK, and rejects statements that would write to the database.
+
+**WARNINGS:**
+- The database is locked for as long as `fn` is running, including while it awaits something other than a statement. All other calls on the database (`executeSql`, `transaction`, `sqlBatch`, other `transactionAsync` calls) are queued until the transaction finishes, so keep slow work such as network requests or user prompts outside of the transaction.
+- Do not await `db.executeSql`, `db.transaction`, `db.sqlBatch`, or another `db.transactionAsync` on the same database from inside `fn`: they are queued behind the open transaction, so awaiting them never finishes. Use `tx.executeSqlAsync` instead.
+- Await every `executeSqlAsync` call before `fn` finishes. A statement that is issued but not awaited still runs before COMMIT, but its failure does not roll back the transaction, and a statement issued after the transaction has finished is rejected.
+- `tx.executeSqlAsync` is only available in transactions started with `transactionAsync` or `readTransactionAsync`.
+
+Statements issued in the same tick, for example with `Promise.all`, are sent to the native side in one batch.
+
+<!-- END Awaitable transactions -->
+
 ## Background processing
 
 The threading model depends on which platform version is used:

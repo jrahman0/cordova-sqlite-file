@@ -3,6 +3,7 @@
 #### cordova-sqlite-storage 7.1.0-dev
 
 - `androidDatabaseLocation: 'private'` setting to store the database in app-private internal storage on Android, instead of app-specific external storage
+- `db.transactionAsync()` and `db.readTransactionAsync()` with `tx.executeSqlAsync()`, to await statements inside a transaction
 
 #### cordova-sqlite-storage 7.0.0
 

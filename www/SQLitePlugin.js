@@ -126,6 +126,31 @@
     this.addTransaction(new SQLitePluginTransaction(this, fn, error, success, false, true));
   };
 
+
+  SQLitePlugin.prototype.transactionAsync = function(fn) {
+    return this.addAsyncTransaction(fn, true, false);
+  };
+
+  SQLitePlugin.prototype.readTransactionAsync = function(fn) {
+    return this.addAsyncTransaction(fn, false, true);
+  };
+
+  SQLitePlugin.prototype.addAsyncTransaction = function(fn, txlock, readOnly) {
+    var db;
+    db = this;
+    return new Promise(function(resolve, reject) {
+      var tx;
+      if (!db.openDBs[db.dbname]) {
+        reject(newSQLError('database not open'));
+        return;
+      }
+      tx = new SQLitePluginTransaction(db, fn, reject, function() {
+        resolve(tx.fnValue);
+      }, txlock, readOnly, true);
+      db.addTransaction(tx);
+    });
+  };
+
   SQLitePlugin.prototype.startNextTransaction = function() {
     var self;
     self = this;
@@ -312,7 +337,7 @@
     this.addTransaction(new SQLitePluginTransaction(this, myfn, error, success, true, false));
   };
 
-  SQLitePluginTransaction = function(db, fn, error, success, txlock, readOnly) {
+  SQLitePluginTransaction = function(db, fn, error, success, txlock, readOnly, isAsync) {
     if (typeof fn !== "function") {
 
       /*
@@ -329,6 +354,7 @@
     this.success = success;
     this.txlock = txlock;
     this.readOnly = readOnly;
+    this.isAsync = !!isAsync;
     this.executes = [];
     if (txlock) {
       this.addStatement("BEGIN", [], null, function(tx, err) {
@@ -341,6 +367,10 @@
 
   SQLitePluginTransaction.prototype.start = function() {
     var err;
+    if (this.isAsync) {
+      this.startAsync();
+      return;
+    }
     try {
       this.fn(this);
       this.run();
@@ -350,6 +380,75 @@
       this.db.startNextTransaction();
       if (this.error) {
         this.error(newSQLError(err));
+      }
+    }
+  };
+
+  SQLitePluginTransaction.prototype.startAsync = function() {
+    var err, tx;
+    tx = this;
+    try {
+      Promise.resolve(this.fn(this)).then(function(value) {
+        tx.fnSettled = true;
+        tx.fnValue = value;
+        tx.continueAsync();
+      }, function(reason) {
+        tx.fnSettled = true;
+        tx.fnFailed = true;
+        tx.fnError = reason;
+        tx.continueAsync();
+      });
+      this.run();
+    } catch (error1) {
+      // fn threw before returning a promise: nothing has been sent yet, so just report the failure.
+      err = error1;
+      this.finalized = true;
+      this.discardQueued(err);
+      txLocks[this.db.dbname].inProgress = false;
+      this.db.startNextTransaction();
+      this.error(err);
+    }
+  };
+
+  // Called whenever an async transaction may be able to make progress:
+  // after a batch completes, after statements are queued and after fn settles.
+  SQLitePluginTransaction.prototype.continueAsync = function() {
+    if (this.finalized || this.batchInFlight) {
+      return;
+    }
+    if (this.fnFailed) {
+      this.discardQueued(this.fnError);
+      this.abort(this.fnError);
+    } else if (this.executes.length > 0) {
+      this.run();
+    } else if (this.fnSettled) {
+      this.finish();
+    }
+    // Otherwise stay open until fn queues another statement or settles.
+  };
+
+  SQLitePluginTransaction.prototype.scheduleRun = function() {
+    var tx;
+    if (this.runScheduled) {
+      return;
+    }
+    tx = this;
+    this.runScheduled = true;
+    // Deferred so statements queued in the same tick (e.g. with Promise.all) go in one batch.
+    Promise.resolve().then(function() {
+      tx.runScheduled = false;
+      tx.continueAsync();
+    });
+  };
+
+  // Drops statements that have not been sent, rejecting any executeSqlAsync promises among them.
+  SQLitePluginTransaction.prototype.discardQueued = function(err) {
+    var j, len1, queued;
+    queued = this.executes;
+    this.executes = [];
+    for (j = 0, len1 = queued.length; j < len1; j++) {
+      if (queued[j].reject) {
+        queued[j].reject(err);
       }
     }
   };
@@ -369,6 +468,36 @@
       return;
     }
     this.addStatement(sql, values, success, error);
+  };
+
+  /*
+  Resolves with the result set, or rejects with the statement error.
+  A rejected statement does not fail the transaction by itself: catch it to carry on,
+  or let it propagate out of fn to roll the transaction back.
+   */
+
+  SQLitePluginTransaction.prototype.executeSqlAsync = function(sql, values) {
+    var tx;
+    tx = this;
+    return new Promise(function(resolve, reject) {
+      if (!tx.isAsync) {
+        throw newSQLError('executeSqlAsync is only supported in transactions started with transactionAsync or readTransactionAsync');
+      }
+      if (tx.finalized) {
+        throw newSQLError('InvalidStateError: This transaction is already finalized. Await every executeSqlAsync call before the transaction function returns.', 11);
+      }
+      if (tx.readOnly && READ_ONLY_REGEX.test(sql)) {
+        throw newSQLError('invalid sql for a read-only transaction');
+      }
+      tx.addStatement(sql, values, function(tx, resultSet) {
+        resolve(resultSet);
+      }, function(tx, error) {
+        reject(error);
+        return false;
+      });
+      tx.executes[tx.executes.length - 1].reject = reject;
+      tx.scheduleRun();
+    });
   };
 
   SQLitePluginTransaction.prototype.addStatement = function(sql, values, success, error) {
@@ -425,6 +554,7 @@
     batchExecutes = this.executes;
     waiting = batchExecutes.length;
     this.executes = [];
+    this.batchInFlight = true;
     tx = this;
     handlerFor = function(index, didSucceed) {
       return function(response) {
@@ -440,11 +570,17 @@
             err = error1;
             txFailure = newSQLError(err);
           }
+        } else if (batchExecutes[index].reject) {
+          // The transaction is being rolled back, so don't leave the awaiting caller hanging.
+          batchExecutes[index].reject(txFailure);
         }
         if (--waiting === 0) {
+          tx.batchInFlight = false;
           if (txFailure) {
-            tx.executes = [];
+            tx.discardQueued(txFailure);
             tx.abort(txFailure);
+          } else if (tx.isAsync) {
+            tx.continueAsync();
           } else if (tx.executes.length > 0) {
             tx.run();
           } else {
